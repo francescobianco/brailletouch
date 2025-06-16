@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esperienza Braille con Vibrazione</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 50px;
+        }
+
+        .shape {
+            border: 2px solid #333;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: background-color 0.1s ease;
+        }
+
+        .shape.active {
+            background-color: rgba(0, 255, 0, 0.3);
+        }
+
+        .horizontal-rect {
+            width: 200px;
+            height: 80px;
+            border-radius: 10px;
+        }
+
+        .vertical-rect {
+            width: 80px;
+            height: 200px;
+            border-radius: 10px;
+        }
+
+        .instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            text-align: center;
+            font-size: 14px;
+            opacity: 0.8;
+            z-index: 10;
+        }
+
+        .status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        @media (max-width: 480px) {
+            .horizontal-rect {
+                width: 150px;
+                height: 60px;
+            }
+            
+            .vertical-rect {
+                width: 60px;
+                height: 150px;
+            }
+            
+            .instructions {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="instructions">
+            Tocca e scorri sulle forme per sentire la vibrazione.<br>
+            La vibrazione si attiva solo quando tocchi le forme.
+        </div>
+        
+        <div class="shape horizontal-rect" id="horizontal"></div>
+        <div class="shape vertical-rect" id="vertical"></div>
+        
+        <div class="status" id="status">
+            Pronto per l'uso - Tocca per iniziare
+        </div>
+    </div>
+
+    <script>
+        class BrailleVibrationExperience {
+            constructor() {
+                this.isVibrating = false;
+                this.vibrationSupported = 'vibrate' in navigator;
+                this.shapes = document.querySelectorAll('.shape');
+                this.status = document.getElementById('status');
+                
+                this.init();
+            }
+
+            init() {
+                if (!this.vibrationSupported) {
+                    this.status.textContent = 'Vibrazione non supportata su questo dispositivo';
+                    return;
+                }
+
+                this.setupEventListeners();
+                this.status.textContent = 'Tocca le forme per sentire la vibrazione';
+            }
+
+            setupEventListeners() {
+                this.shapes.forEach(shape => {
+                    // Eventi touch per mobile
+                    shape.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        this.handleTouchStart(e, shape);
+                    });
+
+                    shape.addEventListener('touchmove', (e) => {
+                        e.preventDefault();
+                        this.handleTouchMove(e, shape);
+                    });
+
+                    shape.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        this.handleTouchEnd(shape);
+                    });
+
+                    // Eventi mouse per desktop (per test)
+                    shape.addEventListener('mousedown', (e) => {
+                        this.handleMouseDown(e, shape);
+                    });
+
+                    shape.addEventListener('mousemove', (e) => {
+                        this.handleMouseMove(e, shape);
+                    });
+
+                    shape.addEventListener('mouseup', (e) => {
+                        this.handleMouseUp(shape);
+                    });
+
+                    shape.addEventListener('mouseleave', (e) => {
+                        this.handleMouseUp(shape);
+                    });
+                });
+
+                // Gestione globale per fermare la vibrazione quando si esce dalle forme
+                document.addEventListener('touchmove', (e) => {
+                    this.handleGlobalTouch(e);
+                });
+            }
+
+            handleTouchStart(e, shape) {
+                const touch = e.touches[0];
+                if (this.isPointInShape(touch.clientX, touch.clientY, shape)) {
+                    this.startVibration(shape);
+                }
+            }
+
+            handleTouchMove(e, shape) {
+                const touch = e.touches[0];
+                if (this.isPointInShape(touch.clientX, touch.clientY, shape)) {
+                    if (!this.isVibrating) {
+                        this.startVibration(shape);
+                    }
+                } else {
+                    this.stopVibration(shape);
+                }
+            }
+
+            handleTouchEnd(shape) {
+                this.stopVibration(shape);
+            }
+
+            handleMouseDown(e, shape) {
+                if (this.isPointInShape(e.clientX, e.clientY, shape)) {
+                    this.startVibration(shape);
+                }
+            }
+
+            handleMouseMove(e, shape) {
+                if (e.buttons === 1) { // Solo se il mouse è premuto
+                    if (this.isPointInShape(e.clientX, e.clientY, shape)) {
+                        if (!this.isVibrating) {
+                            this.startVibration(shape);
+                        }
+                    } else {
+                        this.stopVibration(shape);
+                    }
+                }
+            }
+
+            handleMouseUp(shape) {
+                this.stopVibration(shape);
+            }
+
+            handleGlobalTouch(e) {
+                const touch = e.touches[0];
+                let touchingAnyShape = false;
+
+                this.shapes.forEach(shape => {
+                    if (this.isPointInShape(touch.clientX, touch.clientY, shape)) {
+                        touchingAnyShape = true;
+                    }
+                });
+
+                if (!touchingAnyShape && this.isVibrating) {
+                    this.shapes.forEach(shape => this.stopVibration(shape));
+                }
+            }
+
+            isPointInShape(x, y, shape) {
+                const rect = shape.getBoundingClientRect();
+                return x >= rect.left && 
+                       x <= rect.right && 
+                       y >= rect.top && 
+                       y <= rect.bottom;
+            }
+
+            startVibration(shape) {
+                if (!this.isVibrating && this.vibrationSupported) {
+                    this.isVibrating = true;
+                    shape.classList.add('active');
+                    
+                    // Vibrazione continua con pattern
+                    this.vibratePattern();
+                    
+                    const shapeType = shape.classList.contains('horizontal-rect') ? 'orizzontale' : 'verticale';
+                    this.status.textContent = `Tocco rilevato - Forma ${shapeType}`;
+                }
+            }
+
+            stopVibration(shape) {
+                if (this.isVibrating) {
+                    this.isVibrating = false;
+                    shape.classList.remove('active');
+                    
+                    // Ferma la vibrazione
+                    if (this.vibrationSupported) {
+                        navigator.vibrate(0);
+                    }
+                    
+                    this.status.textContent = 'Fuori dalla forma';
+                    
+                    // Reset status dopo un po'
+                    setTimeout(() => {
+                        if (!this.isVibrating) {
+                            this.status.textContent = 'Tocca le forme per sentire la vibrazione';
+                        }
+                    }, 1000);
+                }
+            }
+
+            vibratePattern() {
+                if (this.isVibrating && this.vibrationSupported) {
+                    // Vibrazione continua con intensità media
+                    navigator.vibrate([100, 50]);
+                    
+                    // Ripeti la vibrazione se ancora attiva
+                    setTimeout(() => {
+                        this.vibratePattern();
+                    }, 150);
+                }
+            }
+        }
+
+        // Inizializza l'esperienza quando il DOM è caricato
+        document.addEventListener('DOMContentLoaded', () => {
+            new BrailleVibrationExperience();
+        });
+
+        // Prevenire il comportamento di default del browser su mobile
+        document.addEventListener('touchstart', (e) => {
+            if (e.target.classList.contains('shape')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>
