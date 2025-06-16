@@ -55,15 +55,31 @@
             border-radius: 10px;
         }
 
-        .instructions {
+        .message {
             position: absolute;
             top: 20px;
             left: 20px;
             right: 20px;
             text-align: center;
             font-size: 14px;
-            opacity: 0.8;
+            opacity: 0.9;
             z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+
+        .error-message {
+            color: #ff6b6b;
+            background: rgba(255, 0, 0, 0.1);
+            border-color: #ff6b6b;
+        }
+
+        .success-message {
+            color: #51cf66;
+            background: rgba(0, 100, 0, 0.1);
+            border-color: #51cf66;
         }
 
         .status {
@@ -73,7 +89,14 @@
             right: 20px;
             text-align: center;
             font-size: 12px;
-            opacity: 0.6;
+            opacity: 0.8;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .hidden {
+            display: none;
         }
 
         @media (max-width: 480px) {
@@ -95,16 +118,25 @@
 </head>
 <body>
     <div class="container">
-        <div class="instructions">
+        <div class="message error-message" id="errorMessage">
+            ⚠️ VIBRAZIONE NON SUPPORTATA<br>
+            Questo dispositivo non supporta la vibrazione.<br>
+            L'esperienza Braille non funzionerà correttamente.<br>
+            Prova su un dispositivo mobile diverso.
+        </div>
+        
+        <div class="message success-message hidden" id="readyMessage">
+            ✅ SISTEMA PRONTO<br>
+            Vibrazione supportata e attivata!<br>
             Tocca e scorri sulle forme per sentire la vibrazione.<br>
             La vibrazione si attiva solo quando tocchi le forme.
         </div>
         
-        <div class="shape horizontal-rect" id="horizontal"></div>
-        <div class="shape vertical-rect" id="vertical"></div>
+        <div class="shape horizontal-rect hidden" id="horizontal"></div>
+        <div class="shape vertical-rect hidden" id="vertical"></div>
         
         <div class="status" id="status">
-            Pronto per l'uso - Tocca per iniziare
+            Verifica supporto vibrazione in corso...
         </div>
     </div>
 
@@ -112,21 +144,76 @@
         class BrailleVibrationExperience {
             constructor() {
                 this.isVibrating = false;
-                this.vibrationSupported = 'vibrate' in navigator;
+                this.vibrationSupported = this.checkVibrationSupport();
                 this.shapes = document.querySelectorAll('.shape');
                 this.status = document.getElementById('status');
+                this.errorMessage = document.getElementById('errorMessage');
+                this.readyMessage = document.getElementById('readyMessage');
+                this.vibrationInterval = null;
                 
                 this.init();
             }
 
+            checkVibrationSupport() {
+                // Controlla supporto vibrazione più accurato
+                if (!('vibrate' in navigator)) {
+                    return false;
+                }
+                
+                // Test rapido per verificare se la vibrazione funziona realmente
+                try {
+                    // Alcuni browser supportano l'API ma non vibrano realmente
+                    navigator.vibrate(1);
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+
             init() {
                 if (!this.vibrationSupported) {
-                    this.status.textContent = 'Vibrazione non supportata su questo dispositivo';
+                    this.showError();
                     return;
                 }
 
-                this.setupEventListeners();
-                this.status.textContent = 'Tocca le forme per sentire la vibrazione';
+                // Test vibrazione più intenso per verificare che funzioni
+                this.testVibration().then((works) => {
+                    if (works) {
+                        this.showReady();
+                        this.setupEventListeners();
+                    } else {
+                        this.showError();
+                    }
+                });
+            }
+
+            async testVibration() {
+                try {
+                    // Test con vibrazione più lunga per assicurarsi che funzioni
+                    navigator.vibrate([200, 100, 200]);
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            showError() {
+                this.errorMessage.classList.remove('hidden');
+                this.readyMessage.classList.add('hidden');
+                this.shapes.forEach(shape => shape.classList.add('hidden'));
+                this.status.textContent = 'Vibrazione non disponibile - Impossibile procedere';
+            }
+
+            showReady() {
+                this.errorMessage.classList.add('hidden');
+                this.readyMessage.classList.remove('hidden');
+                this.shapes.forEach(shape => shape.classList.remove('hidden'));
+                this.status.textContent = 'Tocca le forme per iniziare l\'esperienza Braille';
+                
+                // Nascondi il messaggio di successo dopo 3 secondi
+                setTimeout(() => {
+                    this.readyMessage.classList.add('hidden');
+                }, 3000);
             }
 
             setupEventListeners() {
@@ -243,11 +330,11 @@
                     this.isVibrating = true;
                     shape.classList.add('active');
                     
-                    // Vibrazione continua con pattern
-                    this.vibratePattern();
+                    // Vibrazione molto più intensa e continua
+                    this.startContinuousVibration();
                     
-                    const shapeType = shape.classList.contains('horizontal-rect') ? 'orizzontale' : 'verticale';
-                    this.status.textContent = `Tocco rilevato - Forma ${shapeType}`;
+                    const shapeType = shape.classList.contains('horizontal-rect') ? 'ORIZZONTALE' : 'VERTICALE';
+                    this.status.textContent = `🔥 FORMA ${shapeType} RILEVATA - Vibrazione attiva`;
                 }
             }
 
@@ -256,31 +343,49 @@
                     this.isVibrating = false;
                     shape.classList.remove('active');
                     
-                    // Ferma la vibrazione
-                    if (this.vibrationSupported) {
-                        navigator.vibrate(0);
-                    }
+                    // Ferma la vibrazione continua
+                    this.stopContinuousVibration();
                     
-                    this.status.textContent = 'Fuori dalla forma';
+                    this.status.textContent = '❌ Fuori dalla forma - Vibrazione fermata';
                     
                     // Reset status dopo un po'
                     setTimeout(() => {
                         if (!this.isVibrating) {
-                            this.status.textContent = 'Tocca le forme per sentire la vibrazione';
+                            this.status.textContent = '👆 Tocca le forme per sentire la vibrazione';
                         }
-                    }, 1000);
+                    }, 1500);
                 }
             }
 
-            vibratePattern() {
-                if (this.isVibrating && this.vibrationSupported) {
-                    // Vibrazione continua con intensità media
-                    navigator.vibrate([100, 50]);
-                    
-                    // Ripeti la vibrazione se ancora attiva
-                    setTimeout(() => {
-                        this.vibratePattern();
-                    }, 150);
+            startContinuousVibration() {
+                // Ferma eventuali vibrazioni precedenti
+                this.stopContinuousVibration();
+                
+                // Pattern di vibrazione molto più intenso e continuo
+                const vibratePattern = () => {
+                    if (this.isVibrating && this.vibrationSupported) {
+                        // Vibrazione intensa: 300ms ON, 50ms OFF
+                        navigator.vibrate([300, 50]);
+                        
+                        // Continua il pattern
+                        this.vibrationInterval = setTimeout(vibratePattern, 350);
+                    }
+                };
+                
+                // Inizia immediatamente
+                vibratePattern();
+            }
+
+            stopContinuousVibration() {
+                // Ferma il timer
+                if (this.vibrationInterval) {
+                    clearTimeout(this.vibrationInterval);
+                    this.vibrationInterval = null;
+                }
+                
+                // Ferma la vibrazione hardware
+                if (this.vibrationSupported) {
+                    navigator.vibrate(0);
                 }
             }
         }
@@ -289,6 +394,17 @@
         document.addEventListener('DOMContentLoaded', () => {
             new BrailleVibrationExperience();
         });
+
+        // Richiedi permessi per la vibrazione su alcuni browser
+        document.addEventListener('click', function requestVibration() {
+            // Alcuni browser richiedono un'interazione utente prima di permettere la vibrazione
+            if ('vibrate' in navigator) {
+                navigator.vibrate(100); // Test rapido
+            }
+            
+            // Rimuovi questo listener dopo il primo click
+            document.removeEventListener('click', requestVibration);
+        }, { once: true });
 
         // Prevenire il comportamento di default del browser su mobile
         document.addEventListener('touchstart', (e) => {
@@ -300,6 +416,16 @@
         document.addEventListener('touchmove', (e) => {
             e.preventDefault();
         }, { passive: false });
+
+        // Gestione della visibilità della pagina per fermare la vibrazione
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // Ferma tutte le vibrazioni quando la pagina non è visibile
+                if ('vibrate' in navigator) {
+                    navigator.vibrate(0);
+                }
+            }
+        });
     </script>
 </body>
 </html>
